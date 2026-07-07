@@ -1,0 +1,100 @@
+[
+  {
+    "id": "dns-001",
+    "category": "DNS",
+    "issue": "DNS resolution failure",
+    "symptoms": "Client can ping IP addresses but cannot resolve hostnames. nslookup or dig times out or returns SERVFAIL. Browser shows DNS_PROBE_FINISHED_NXDOMAIN.",
+    "solution": "1) Check client DNS server setting (ipconfig /all or cat /etc/resolv.conf). 2) Test resolution directly against the DNS server with nslookup host <dns-server-ip>. 3) On the DNS server check the zone is loaded and forwarders are reachable (test with dig @8.8.8.8). 4) Check firewall is not blocking UDP/TCP 53 between client and DNS server. 5) Clear DNS cache (ipconfig /flushdns) after fixing."
+  },
+  {
+    "id": "dhcp-001",
+    "category": "DHCP",
+    "issue": "Client not getting an IP address / stuck on APIPA (169.254.x.x)",
+    "symptoms": "Client shows a 169.254.x.x address, cannot reach gateway, DHCP request times out.",
+    "solution": "1) Confirm DHCP server service is running and scope has free leases. 2) If client is on a different VLAN/subnet than the DHCP server, confirm IP helper-address / DHCP relay is configured on the router or L3 switch for that VLAN. 3) Check for a rogue DHCP server on the segment answering first. 4) Check switchport is not blocked by port security or in the wrong VLAN. 5) On the client run ipconfig /release then /renew and watch for DHCPDISCOVER going out."
+  },
+  {
+    "id": "arp-001",
+    "category": "ARP / Layer 2",
+    "issue": "Duplicate IP address / ARP conflict",
+    "symptoms": "Windows shows 'another device on the network has the same IP address'. Intermittent connectivity, alternating MAC in ARP table.",
+    "solution": "1) Run arp -a on affected host and on a switch/router to see which MAC currently owns the IP. 2) Check DHCP scope for overlapping static reservations. 3) Search switch CAM/MAC table across access ports for the conflicting MAC to physically locate the second device. 4) Fix by reassigning a static IP or excluding it from the DHCP pool."
+  },
+  {
+    "id": "vlan-001",
+    "category": "VLAN / Trunking",
+    "issue": "Devices on the same VLAN cannot reach each other across switches",
+    "symptoms": "Hosts in VLAN 20 on switch A cannot ping hosts in VLAN 20 on switch B, but local VLAN 20 traffic on each switch works fine.",
+    "solution": "1) Check the trunk link between switches: show interface trunk (Cisco) or diagnose vlan (Fortinet/other). 2) Confirm VLAN 20 is allowed on the trunk (not pruned). 3) Confirm both ends use the same trunk encapsulation (802.1Q) and native VLAN matches. 4) Check trunk port is not err-disabled or down. 5) Verify STP is not blocking the trunk port (show spanning-tree)."
+  },
+  {
+    "id": "stp-001",
+    "category": "STP / Loop",
+    "issue": "Broadcast storm / network-wide slowdown after cabling change",
+    "symptoms": "Switch CPU spikes, port LEDs flash rapidly, users report the whole LAN is slow right after new cabling was added.",
+    "solution": "1) Check for a physical loop: two ports on the same switch accidentally patched together, or a cheap unmanaged switch looped back into itself. 2) Verify STP/RSTP is enabled on all switches (show spanning-tree summary). 3) Enable BPDU guard and loop guard on access ports so a future loop auto-shuts the port instead of storming the network. 4) Physically trace and remove the looped cable."
+  },
+  {
+    "id": "ospf-001",
+    "category": "OSPF",
+    "issue": "OSPF neighbor stuck in EXSTART/EXCHANGE",
+    "symptoms": "show ip ospf neighbor shows the adjacency stuck, never reaching FULL state.",
+    "solution": "1) This is almost always an MTU mismatch between the two routers' interfaces. Check interface MTU on both sides. 2) Verify OSPF area IDs match on both ends. 3) Check for duplicate router-id across the two devices. 4) Confirm the interfaces are in the same subnet and OSPF hello/dead timers match."
+  },
+  {
+    "id": "ospf-002",
+    "category": "OSPF",
+    "issue": "OSPF neighbor stuck in 2-WAY only (not becoming FULL)",
+    "symptoms": "Neighbors sit at 2-WAY state on a broadcast (Ethernet) segment.",
+    "solution": "This is often expected behavior on a multi-access segment between two DROTHER routers -- only the DR and BDR form FULL adjacencies with everyone else. Check show ip ospf interface to confirm DR/BDR election happened. If DR election is missing entirely, check that OSPF priority isn't set to 0 on all routers on the segment."
+  },
+  {
+    "id": "bgp-001",
+    "category": "BGP",
+    "issue": "BGP session stuck in Active or Idle state",
+    "symptoms": "show ip bgp summary shows the peer state as Active or Idle instead of Established.",
+    "solution": "1) Check basic IP reachability to the peer address first (ping/traceroute) -- BGP will never come up without underlying connectivity. 2) Verify TCP port 179 is not blocked by an ACL or firewall between the peers. 3) Confirm both sides configured the correct peer AS number (remote-as). 4) For eBGP multihop scenarios, check ebgp-multihop and the correct source interface/update-source is set. 5) Check for an authentication (MD5) mismatch if configured."
+  },
+  {
+    "id": "ipsec-001",
+    "category": "IPsec VPN",
+    "issue": "IPsec tunnel fails at Phase 1 (IKE)",
+    "symptoms": "VPN tunnel shows down, logs show 'no proposal chosen' or Phase 1 negotiation failing.",
+    "solution": "1) Confirm both peers match exactly on: encryption algorithm, hash/integrity, DH group, IKE version (v1 vs v2), and authentication method (PSK vs certificate). 2) Verify the pre-shared key is identical on both sides (no trailing spaces). 3) Check UDP 500 and UDP 4500 (NAT-T) are open on any firewall in the path. 4) Confirm the peer IP/gateway is correct and reachable. 5) Check IKE lifetime values are compatible."
+  },
+  {
+    "id": "ipsec-002",
+    "category": "IPsec VPN",
+    "issue": "IPsec Phase 1 up but Phase 2 (IPsec SA) fails",
+    "symptoms": "IKE SA established but no traffic passes, logs show 'no proposal chosen' at quick mode / Phase 2, or 'TS unacceptable'.",
+    "solution": "1) Verify Phase 2 encryption/hash/PFS group match on both sides. 2) Check the interesting traffic / proxy-ID (source and destination subnets defined for the tunnel) matches exactly on both peers -- this is the most common cause. 3) Confirm the local and remote subnets aren't overlapping with another existing tunnel. 4) Check the security policy/firewall rule actually permits traffic into the tunnel interface."
+  },
+  {
+    "id": "nat-001",
+    "category": "NAT",
+    "issue": "Internal hosts can browse but a specific inbound service (port forward) doesn't work",
+    "symptoms": "External users cannot reach a hosted service; internal outbound traffic works fine.",
+    "solution": "1) Confirm the DNAT/VIP (virtual IP) rule maps the correct external port to the correct internal IP and port. 2) Confirm a firewall policy exists allowing the WAN-to-internal-server traffic (the NAT rule alone is not enough on most firewalls, e.g. FortiGate needs both a VIP and a policy). 3) Check the internal server's default gateway points back to the firewall (asymmetric routing otherwise). 4) Test from outside the network, not from inside (NAT hairpin/loopback may behave differently)."
+  },
+  {
+    "id": "mtu-001",
+    "category": "MTU / Fragmentation",
+    "issue": "Small packets work (ping) but large file transfers or specific websites hang",
+    "symptoms": "SSH works, ping works, but HTTPS pages partially load or large downloads stall -- classic 'black hole' MTU issue, common over VPN tunnels.",
+    "solution": "1) Test with ping using a large payload and don't-fragment flag: ping -f -l 1472 <dest> (Windows) or ping -M do -s 1472 <dest> (Linux) and reduce size until it stops fragmenting to find the working MTU. 2) Check tunnel/VPN overhead is accounted for (IPsec typically needs ~60-80 bytes less than the physical MTU). 3) Ensure ICMP 'fragmentation needed' (type 3 code 4) is not being blocked anywhere in the path -- this breaks PMTUD. 4) Adjust MSS clamping on the router/firewall for VPN interfaces."
+  },
+  {
+    "id": "route-001",
+    "category": "Routing",
+    "issue": "Asymmetric routing causing intermittent connectivity or firewall drops",
+    "symptoms": "Traffic works one direction but replies take a different path; stateful firewall drops return traffic as 'no session found'.",
+    "solution": "1) Trace the path in both directions with traceroute from each end. 2) Check for multiple default gateways or routes that send traffic out one interface but replies come back via a different one. 3) On multi-homed/dual-ISP setups, verify policy routing or SD-WAN rules keep session traffic symmetric per source. 4) On firewalls, consider enabling asymmetric routing tolerance only as a last resort -- fixing the routing is safer."
+  },
+  {
+    "id": "wifi-001",
+    "category": "Wireless",
+    "issue": "Wireless clients connect but get poor or intermittent throughput",
+    "symptoms": "Wi-Fi shows connected with good signal, but speeds are poor or drop periodically.",
+    "solution": "1) Check for channel overlap/interference with neighboring APs using a Wi-Fi scanner. 2) Verify AP is not oversubscribed (too many clients on one radio/band). 3) Check for mismatched security/auth causing repeated re-associations. 4) Confirm band steering isn't forcing capable clients onto the crowded 2.4GHz band. 5) Check AP uplink switchport for errors/duplex mismatch."
+  }
+]
