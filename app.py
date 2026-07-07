@@ -1,8 +1,7 @@
 """
 app.py -- Local Network Troubleshooting Chatbot
 Free / offline version: no API keys, runs entirely on your own machine
-via Ollama. Built as a companion portfolio project to the paid
-API-based Net_troubleshooting-chatbot.
+via Ollama. Companion project to the paid API-based version.
 
 Run with:  streamlit run app.py
 Requires Ollama running locally (see README.md for setup).
@@ -12,15 +11,12 @@ import json
 import os
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from retriever import KnowledgeBaseRetriever
 
-# When running via plain `streamlit run app.py` on your own machine, Ollama
-# is on localhost. When running inside docker-compose, the app container
-# reaches Ollama through the service name "ollama" on the shared network --
-# that's what OLLAMA_HOST is for (already set in docker-compose.yml).
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_URL = f"{OLLAMA_HOST}/api/chat"
-DEFAULT_MODEL = "llama3.2"  # small enough to run on a normal laptop, no GPU required
+DEFAULT_MODEL = "llama3.2"
 
 SYSTEM_PROMPT = """You are a senior network engineer assistant helping troubleshoot
 network issues (routing, switching, VPN, wireless, DNS, DHCP, and related protocols).
@@ -32,20 +28,40 @@ actionable steps, the way a real troubleshooting runbook would."""
 
 st.set_page_config(page_title="Network Troubleshooter (Local)", page_icon=":globe_with_meridians:", layout="wide")
 
-# ---------- Dark network-ops themed CSS ----------
+# ---------- White / blue themed CSS ----------
 st.markdown("""
 <style>
-.stApp { background-color: #0b0f14; color: #d6e4e5; }
-[data-testid="stSidebar"] { background-color: #0f1720; }
-.stChatMessage { background-color: #101820; border: 1px solid #1c2b30; border-radius: 8px; }
-h1, h2, h3 { color: #2dd4bf; font-family: 'Courier New', monospace; }
-.stButton>button { background-color: #0f766e; color: white; border-radius: 6px; border: none; }
-.match-box { background:#0f1720; border-left:3px solid #2dd4bf; padding:8px 12px; margin-bottom:6px; font-size:13px; }
+.stApp { background-color: #f4f8fc; color: #10253e; }
+[data-testid="stSidebar"] { background-color: #eaf2fb; border-right: 1px solid #cfe0f2; }
+.stChatMessage { background-color: #ffffff; border: 1px solid #d6e6f7; border-radius: 10px; }
+h1, h2, h3 { color: #1d4ed8; font-family: 'Segoe UI', sans-serif; }
+.stButton>button { background-color: #2563eb; color: white; border-radius: 6px; border: none; }
+.stButton>button:hover { background-color: #1d4ed8; }
+input, textarea { background-color: #ffffff !important; color: #10253e !important; border: 1px solid #93c5fd !important; }
+[data-testid="stChatInput"] textarea { background-color: #ffffff !important; color: #10253e !important; }
+[data-testid="stChatInput"] { background-color: #ffffff !important; }
+[data-baseweb="input"] input { color: #10253e !important; }
+.match-box { background:#eaf2fb; border-left:3px solid #2563eb; padding:8px 12px; margin-bottom:6px; font-size:13px; color:#10253e; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Network Troubleshooter -- Local Edition")
-st.caption("Runs fully offline with Ollama. No API key. No usage cost. Companion project to the paid API-powered version.")
+# ---------- Header with live ticking clock ----------
+header_col1, header_col2 = st.columns([4, 1])
+with header_col1:
+    st.title("Network Troubleshooter — Local Edition")
+    st.caption("Runs fully offline with Ollama. No API key. No usage cost. Every exchange trains the knowledge base.")
+with header_col2:
+    components.html("""
+    <div style="text-align:right; font-family:'Segoe UI',sans-serif; color:#2563eb; font-size:20px; padding-top:10px;" id="clock"></div>
+    <script>
+    function tick() {
+        const now = new Date();
+        document.getElementById("clock").innerText = now.toLocaleTimeString();
+    }
+    tick();
+    setInterval(tick, 1000);
+    </script>
+    """, height=50)
 
 # ---------- Sidebar ----------
 with st.sidebar:
@@ -53,8 +69,10 @@ with st.sidebar:
     model_name = st.text_input("Ollama model", value=DEFAULT_MODEL,
                                 help="Must already be pulled: `ollama pull llama3.2`")
     top_k = st.slider("Knowledge base matches to use", 1, 5, 3)
+    auto_learn = st.checkbox("Auto-learn from every conversation", value=True,
+                              help="If on, every question and answer is automatically added to the knowledge base.")
     st.markdown("---")
-    st.subheader("Add to knowledge base")
+    st.subheader("Add a curated entry")
     with st.form("add_kb_form", clear_on_submit=True):
         new_category = st.text_input("Category (e.g. DNS, BGP, IPsec)")
         new_issue = st.text_input("Issue title")
@@ -72,14 +90,9 @@ if "retriever" not in st.session_state:
     st.session_state.retriever = KnowledgeBaseRetriever("knowledge_base.json")
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "last_exchange" not in st.session_state:
-    st.session_state.last_exchange = None
 
 
 def call_ollama(model: str, messages: list) -> str:
-    """Send the conversation to a locally running Ollama server and return
-    the full text response. Ollama exposes an OpenAI-style REST API on
-    localhost -- nothing leaves your machine."""
     payload = {"model": model, "messages": messages, "stream": False}
     resp = requests.post(OLLAMA_URL, json=payload, timeout=120)
     resp.raise_for_status()
@@ -133,18 +146,15 @@ if user_input:
                     f"and the model is pulled (`ollama pull {model_name}`)."
                 )
         st.markdown(answer)
+        if auto_learn:
+            st.caption("📘 learned from this exchange")
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
-    st.session_state.last_exchange = {"question": user_input, "answer": answer}
 
-# ---------- Promote last exchange into the knowledge base ----------
-if st.session_state.last_exchange:
-    if st.button("Save this last exchange as a new knowledge base entry"):
-        ex = st.session_state.last_exchange
-        entry = st.session_state.retriever.add_entry(
+    if auto_learn:
+        st.session_state.retriever.add_entry(
             category="From chat",
-            issue=ex["question"][:80],
-            symptoms=ex["question"],
-            solution=ex["answer"],
+            issue=user_input[:80],
+            symptoms=user_input,
+            solution=answer,
         )
-        st.success(f"Saved as {entry['id']}. Future questions like this will retrieve it directly.")
